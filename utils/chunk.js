@@ -1,19 +1,26 @@
-// Simple chunker to avoid TTS size limits (tune chunk size)
-function chunkText(text, maxChars = 3000) {
-  if (text.length <= maxChars) return [text];
-  const sentences = text.match(/[^\.!\?]+[\.!\?]+("|'|)?\s*/g) || [text];
-  const chunks = [];
-  let cur = "";
-  for (const s of sentences) {
-    if ((cur + s).length > maxChars) {
-      if (cur) chunks.push(cur);
-      cur = s;
+function chunkText(text, maxBytes = 4800) {
+  const encoder = new TextEncoder();
+  let chunks = [];
+  let currentChunk = "";
+  let currentBytes = 0;
+
+  const sentences = text.split(/(?<=[।.!?])/); // split by Bengali or English sentence enders
+
+  for (const sentence of sentences) {
+    const encoded = encoder.encode(sentence);
+    if (currentBytes + encoded.length > maxBytes) {
+      chunks.push(currentChunk.trim());
+      currentChunk = sentence;
+      currentBytes = encoded.length;
     } else {
-      cur += s;
+      currentChunk += sentence;
+      currentBytes += encoded.length;
     }
   }
-  if (cur) chunks.push(cur);
+
+  if (currentChunk.trim().length > 0) chunks.push(currentChunk.trim());
   return chunks;
 }
+
 
 export {chunkText};

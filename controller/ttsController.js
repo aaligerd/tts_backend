@@ -9,7 +9,7 @@ import {randomName} from '../utils/randomName.js'
 import {slugify} from '../utils/slug.js'
 configDotenv();
 
-// === CONFIG: set via ENV in prod ===
+
 const REGION = process.env.AWS_REGION;
 const S3_BUCKET = process.env.S3_BUCKET; // e.g. "my-audio-bucket"
 const PRESIGN_EXPIRES = 60 * 60 * 24 * 7; // 7 days (if using presigned)
@@ -19,7 +19,8 @@ const minmum_char=10;
 
 const createTts=async (req, res) => {
   try {
-    const { title, text, tone = "newscaster", voice = "Joanna" } = req.body;
+
+    const {title, text, tone = "default", voice = "Kajal", language = "bn-IN" } = req.body;
     if (!text || text.length < minmum_char) return res.status(400).json({ error: `Minimum ${minmum_char} charachters requried` });
 
     // 1) chunk text and synthesize each piece (Polly has limits)
@@ -27,12 +28,12 @@ const createTts=async (req, res) => {
     const audioBuffers = [];
 
     for (let i = 0; i < chunks.length; i++) {
-      const ssml = buildSSML(chunks[i], tone);
       const params = {
         OutputFormat: "mp3",
         VoiceId: voice,
-        TextType: "ssml",
-        Text: ssml,
+        LanguageCode: language,
+        TextType: "text",
+        Text: text,
       };
       const cmd = new SynthesizeSpeechCommand(params);
       const resp = await polly.send(cmd); // returns audio stream
@@ -55,21 +56,13 @@ const createTts=async (req, res) => {
       Key: audioKey,
       Body: finalAudio,
       ContentType: "audio/mpeg",
-      ACL: "private", // or 'public-read' depending on policy
+      ACL: "public-read"
     }));
 
-    // 4) create presigned URL
-    const presignedUrl = await getSignedUrl(
-      s3,
-      new PutObjectCommand({ Bucket: S3_BUCKET, Key: audioKey }), // note: presign for GET, below we create GET presign properly
-      { expiresIn: PRESIGN_EXPIRES }
-    );
-    // Actually create presigned GET URL:
-    const { GetObjectCommand } = await import("@aws-sdk/client-s3");
-    const audioGetUrl = await getSignedUrl(s3, new GetObjectCommand({ Bucket: S3_BUCKET, Key: audioKey }), { expiresIn: PRESIGN_EXPIRES });
+    const audioUrl = `https://${S3_BUCKET}.s3.${REGION}.amazonaws.com/${audioKey}`;
 
     // 5) generate QR code PNG -> buffer
-    const qrBuffer = await QRCode.toBuffer(audioGetUrl, { type: "png", width: 400 });
+    const qrBuffer = await QRCode.toBuffer(audioUrl, { type: "png", width: 400 });
 
     // 6) upload QR to S3
     const qrKey = `qr/${randomName("qr", "png")}`;
@@ -78,7 +71,7 @@ const createTts=async (req, res) => {
       Key: qrKey,
       Body: qrBuffer,
       ContentType: "image/png",
-      ACL: "private",
+      ACL: "public-read",
     }));
     const { GetObjectCommand: GetObj } = await import("@aws-sdk/client-s3");
     const qrUrl = await getSignedUrl(s3, new GetObj({ Bucket: S3_BUCKET, Key: qrKey }), { expiresIn: PRESIGN_EXPIRES });
@@ -87,7 +80,7 @@ const createTts=async (req, res) => {
 
     return res.json({
       success: true,
-      audio: { key: audioKey, url: audioGetUrl },
+      audio: { key: audioKey, url: audioUrl },
       qr: { key: qrKey, url: qrUrl },
     });
   } catch (err) {
