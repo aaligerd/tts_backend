@@ -17,7 +17,7 @@ const minmum_char = 10;
 const s3 = new S3Client({ region: REGION });
 
 const gcpTTSClient = new textToSpeech.TextToSpeechClient({
-  keyFilename: "C:/Users/amerp/Desktop/The Eastern Gazette/TTS/tts_backend/gcp-cred.json"
+  keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS
 });
 
 const createTts = async (req, res) => {
